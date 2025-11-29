@@ -41,3 +41,5 @@ version_local.json
 
 # Output files
 out
+
+data.ignore

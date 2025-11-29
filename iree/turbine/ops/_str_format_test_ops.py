@@ -52,6 +52,38 @@ class test_add(CustomOp):
         )
         kb.yield_results(*impl_helper.call_function(func_op, *kb.arg_bindings))
 
+@CustomOp.register(library=LIBRARY)
+class test_add_dyn(CustomOp):
+    signature = "test_add_dyn(Tensor t1, Tensor t2) -> (Tensor)"
+
+    def select(self, ksel: KernelSelection):
+        t1_desc = ksel.arg_tensor(0)
+        t2_desc = ksel.arg_tensor(1)
+        # 允许动态 shape，不调用 `specialize_all_dims`
+        # 如果需要部分静态化，可以使用 `specialize_dims` 指定静态的维度
+        t1_desc.specialize_dims(1)  # 例如：仅静态化第一个维度
+        t2_desc.specialize_dims(1)
+
+        # 返回结果张量，保持动态 shape
+        result_desc = ksel.return_new_tensor(list(t1_desc.t.shape), t1_desc.t.dtype)
+        result_desc.specialize_dims(1)
+
+    def generate(self, ksel: KernelSelection, kb: KernelBuilder):
+        result_type = kb.arg_bindings[0].type  # type: ignore
+        rtt = RankedTensorType(result_type)
+        function_name = (
+            f"turbine_test_add_dyn_strformat_{rtt.rank}d_{str(rtt.element_type)}"
+        )
+        func_op = _templates.inline_template_function(
+            kb,
+            "test_add_dyn_strformat",
+            function_name,
+            rank=rtt.rank,
+            element_type=str(rtt.element_type),
+            tensor_type=str(rtt),
+        )
+        kb.yield_results(*impl_helper.call_function(func_op, *kb.arg_bindings))
+
 
 @CustomOp.register(library=LIBRARY)
 class syntax_error(CustomOp):

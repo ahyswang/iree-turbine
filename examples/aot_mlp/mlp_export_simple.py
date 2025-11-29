@@ -51,13 +51,19 @@ class MLP(nn.Module):
         x = self.layer3(x)
         return x
 
+class SimpleParams(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.classifier = nn.Linear(20, 30)
 
+    def forward(self, x):
+        return self.classifier(x)
+    
 model = MLP()
 example_x = torch.empty(97, 8, dtype=torch.float32)
 exported = aot.export(model, example_x)
 exported.print_readable()
 compiled_binary = exported.compile(save_to=None)
-
 
 def run_inference() -> np.ndarray:
     """
@@ -86,6 +92,27 @@ class ModelTest(unittest.TestCase):
             output.shape, (97, 2), "output shape doesn't match the expected (97, 2)"
         )
 
+    def testDynamicNNModule_MLP(self):
+        mdl = MLP()
+        batch = torch.export.Dim("batch")
+        exported = aot.export(
+            mdl, args=(torch.empty([97, 8]),), dynamic_shapes={"x": {0: batch}}
+        )
+        exported.print_readable()
+        asm = str(exported.mlir_module)
+
+    def testDynamicNNModule(self):
+        mdl = SimpleParams()
+        batch = torch.export.Dim("batch")
+        exported = aot.export(
+            mdl, args=(torch.empty([128, 20]),), dynamic_shapes={"x": {0: batch}}
+        )
+        exported.print_readable()
+        asm = str(exported.mlir_module)
+        self.assertIn(
+            "func.func @main(%arg0: !torch.vtensor<[?,20],f32>) -> !torch.vtensor<[?,30],f32>",
+            asm,
+        )
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
